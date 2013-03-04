@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import re
+
+#for var in ('COMP_LINE', 'COMP_POINT', 'COMP_KEY', 'COMP_TYPE'):
+#    print '[%s:%s]' % (var, os.environ[var])
+
+#print '\n'.join(os.listdir('.'))
+
+OPT_MATCH_IGNORE_CASE = True
+
+def debug(msg):
+    print >> sys.stderr, 'DEBUG'
+    print >> sys.stderr, msg
+    print >> sys.stderr, 'END'
+
+def _all_lower(s):
+    for c in s:
+        if c.isupper():
+            return False
+    return True
+
+def filelist(path):
+    try:
+        return os.listdir(path)
+    except:
+        return []
+
+# TODO: cannot work, translate path to real
+def dirlist(path):
+    return filter(os.path.isdir, filelist(path))
+
+# TODO: need to unquote
+def get_prefix(line, cur):
+    #debug('%s %s' % (line, cur))
+    cur = int(cur)
+    for m in re.finditer('\S+', line):
+        if m.start(0) <= cur <= m.end(0):
+            return m.group(0)
+    return ''
+
+def get_path(prefix):
+    if not prefix:
+        prefix = os.path.curdir + os.path.sep
+    _p = os.path.expanduser(prefix)
+    path = os.path.abspath(os.path.join('.', _p))
+    if prefix.endswith(os.path.sep):
+        return path
+    else:
+        return os.path.dirname(path)
+
+def prefix_matcher(prefix, candidates):
+    base_prefix = os.path.basename(prefix)
+    dir_prefix = os.path.dirname(prefix)
+    result = []
+    if not _all_lower(base_prefix):
+        ignore_case = False
+    else:
+        ignore_case = OPT_MATCH_IGNORE_CASE
+    for c in candidates:
+        if ignore_case:
+            if not c.lower().startswith(base_prefix):
+                continue
+        else:
+            if not c.startswith(base_prefix):
+                continue
+        result.append(os.path.join(dir_prefix, c))
+    return result
+
+def partial_matcher(prefix, candidates):
+    result = prefix_matcher(prefix, candidates)
+    if result:
+        return result
+
+    base_prefix = os.path.basename(prefix)
+    dir_prefix = os.path.dirname(prefix)
+    result = []
+    if not _all_lower(base_prefix):
+        ignore_case = False
+    else:
+        ignore_case = OPT_MATCH_IGNORE_CASE
+    for c in candidates:
+        if ignore_case:
+            if not base_prefix in c.lower():
+                continue
+        else:
+            if not base_prefix in c:
+                continue
+        result.append(os.path.join(dir_prefix, c))
+    #debug(result)
+    return result
+
+import difflib
+def fuzzy_matcher(prefix, candidates):
+    result = prefix_matcher(prefix, candidates)
+    if result:
+        return result
+
+    base_prefix = os.path.basename(prefix)
+    dir_prefix = os.path.dirname(prefix)
+    result = []
+    if not _all_lower(base_prefix):
+        ignore_case = False
+    else:
+        ignore_case = OPT_MATCH_IGNORE_CASE
+
+    diff_matcher = difflib.SequenceMatcher(None)
+    diff_matcher.set_seq1(base_prefix)
+    for c in candidates:
+        if ignore_case:
+            c_icase = c.lower()
+        else:
+            c_icase = c
+
+        diff_matcher.set_seq2(c_icase)
+        r = diff_matcher.ratio()
+        if r > 0.5:
+            result.append(os.path.join(dir_prefix, c))
+    #debug(result)
+    return result
+
+#matcher = fuzzy_matcher
+matcher = partial_matcher
+
+def get_complete():
+    line = os.environ.get('COMP_LINE', sys.argv[1][1:])
+    cur = os.environ.get('COMP_POINT', sys.argv[2][1:])
+    prefix = get_prefix(line, cur)
+    path = get_path(prefix)
+    #debug('path:%s' % path)
+    candidates = filelist(path)
+    #debug('%s' % files)
+    files = matcher(prefix, candidates)
+    #debug(files)
+    print '\n'.join(files)
+
+get_complete()
